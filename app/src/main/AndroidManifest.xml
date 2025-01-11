@@ -232,6 +232,22 @@
             android:name="com.sec.android.support.multiwindow"
             android:value="true" />
 
+        <activity
+            android:name=".app.UbuntuDesktopActivity"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_ubuntu"
+            android:label="Ubuntu 桌面"
+            android:configChanges="orientation|screenSize|smallestScreenSize|density|screenLayout|keyboard|keyboardHidden|navigation"
+            android:launchMode="singleTask"
+            android:resizeableActivity="true"
+            android:theme="@style/Theme.TermuxActivity.DayNight.NoActionBar"
+            tools:targetApi="n">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
     </application>
 
 </manifest>
