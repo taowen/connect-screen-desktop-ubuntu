@@ -478,8 +478,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             }
 
             // 从assets复制文件到Download目录
-            InputStream inputStream = getAssets().open("initial-backup");
-            File outputFile = new File("/sdcard/Download/ubuntu桌面初始备份.tar.gz");
+            InputStream inputStream = getAssets().open("termux-backup");
+            File outputFile = new File("/sdcard/Download/termux备份.tar.gz");
             FileOutputStream outputStream = new FileOutputStream(outputFile);
             byte[] buffer = new byte[1024];
             int length;
@@ -490,7 +490,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             inputStream.close();
 
             // 执行解压命令
-            session.write("tar -zxf /sdcard/Download/ubuntu桌面初始备份.tar.gz -C /data/data/com.termux/files --recursive-unlink --preserve-permissions && exit\n");
+            session.write("tar -zxf /sdcard/Download/termux备份.tar.gz -C /data/data/com.termux/files --recursive-unlink --preserve-permissions\n");
             prefs.edit().putBoolean("has_restored_initial_backup", true).apply();
         } catch (IOException e) {
             Logger.logStackTraceWithMessage(LOG_TAG, "还原初始备份失败", e);
