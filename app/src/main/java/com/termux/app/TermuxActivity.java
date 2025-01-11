@@ -86,6 +86,7 @@ import java.util.Arrays;
  */
 public final class TermuxActivity extends AppCompatActivity implements ServiceConnection {
 
+    public static TermuxActivity instance;
     /**
      * The connection to the {@link TermuxService}. Requested in {@link #onCreate(Bundle)} with a call to
      * {@link #bindService(Intent, ServiceConnection, int)}, and obtained and stored in
@@ -200,6 +201,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     private static final String ARG_ACTIVITY_RECREATED = "activity_recreated";
 
     private static final String LOG_TAG = "TermuxActivity";
+    private String toExecuteCommand;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -261,6 +263,8 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         registerForContextMenu(mTerminalView);
 
         FileReceiverActivity.updateFileReceiverActivityComponentsState(this);
+
+        toExecuteCommand = getIntent().getStringExtra("execute_command");
 
         try {
             // Start the {@link TermuxService} and make it run regardless of who is bound to it
@@ -356,6 +360,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         super.onDestroy();
 
         Logger.logDebug(LOG_TAG, "onDestroy");
+        instance = null;
 
         if (mIsInvalidState) return;
 
@@ -413,6 +418,12 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                         
                         // 创建新会话并执行命令
                         mTermuxTerminalSessionActivityClient.addNewSession(launchFailsafe, null);
+                        
+                        // 获取并执行传入的命令
+                        if (toExecuteCommand != null && !toExecuteCommand.isEmpty()) {
+                            getCurrentSession().write(toExecuteCommand + "\n");
+                        }
+                        
                         tryRestoringBackup();
                         
                     } catch (WindowManager.BadTokenException e) {
@@ -450,6 +461,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         if (session == null) {
             return;
         }
+        instance = this;
         // 检查是否已经恢复过初始备份
         SharedPreferences prefs = getSharedPreferences("connect_screen_ubuntu_desktop", MODE_PRIVATE);
         if (prefs.getBoolean("has_restored_initial_backup", false)) {
@@ -482,6 +494,13 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             prefs.edit().putBoolean("has_restored_initial_backup", true).apply();
         } catch (IOException e) {
             Logger.logStackTraceWithMessage(LOG_TAG, "还原初始备份失败", e);
+        }
+    }
+
+    public void executeCommand(String command) {
+        TerminalSession session = getCurrentSession();
+        if (session != null) {
+            session.write(command + "\n");
         }
     }
 
