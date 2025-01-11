@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -37,11 +38,13 @@ import com.termux.shared.activity.media.AppCompatActivityUtils;
 import com.termux.shared.data.IntentUtils;
 import com.termux.shared.android.PermissionUtils;
 import com.termux.shared.data.DataUtils;
+import com.termux.shared.errors.Error;
 import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY;
 import com.termux.app.activities.HelpActivity;
 import com.termux.app.activities.SettingsActivity;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
+import com.termux.shared.termux.file.TermuxFileUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.app.terminal.TermuxSessionsListViewController;
 import com.termux.app.terminal.io.TerminalToolbarViewPager;
@@ -65,6 +68,10 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.viewpager.widget.ViewPager;
 
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Arrays;
 
 /**
@@ -403,7 +410,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                         if (intent != null && intent.getExtras() != null) {
                             launchFailsafe = intent.getExtras().getBoolean(TERMUX_ACTIVITY.EXTRA_FAILSAFE_SESSION, false);
                         }
+                        
+                        // 创建新会话并执行命令
                         mTermuxTerminalSessionActivityClient.addNewSession(launchFailsafe, null);
+                        tryRestoringBackup();
+                        
                     } catch (WindowManager.BadTokenException e) {
                         // Activity finished - ignore.
                     }
@@ -427,6 +438,51 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
 
         // Update the {@link TerminalSession} and {@link TerminalEmulator} clients.
         mTermuxService.setTermuxTerminalSessionClient(mTermuxTerminalSessionActivityClient);
+    }
+
+    private void tryRestoringBackup() {
+        if (!PermissionUtils.checkAndRequestLegacyOrManageExternalStoragePermission(
+            TermuxActivity.this, -1, false)) {
+            requestStoragePermission(false);
+            return;
+        }
+        TerminalSession session = getCurrentSession();
+        if (session == null) {
+            return;
+        }
+        // 检查是否已经恢复过初始备份
+        SharedPreferences prefs = getSharedPreferences("connect_screen_ubuntu_desktop", MODE_PRIVATE);
+        if (prefs.getBoolean("has_restored_initial_backup", false)) {
+            return;
+        }
+        try {
+            // 列出assets目录下所有文件
+            String[] files = getAssets().list("");
+            Logger.logInfo(LOG_TAG, "Asset files count: " + files.length);
+            if (files != null) {
+                for (String file : files) {
+                    Logger.logInfo(LOG_TAG, "Asset file: " + file);
+                }
+            }
+
+            // 从assets复制文件到Download目录
+            InputStream inputStream = getAssets().open("initial-backup");
+            File outputFile = new File("/sdcard/Download/ubuntu桌面初始备份.tar.gz");
+            FileOutputStream outputStream = new FileOutputStream(outputFile);
+            byte[] buffer = new byte[1024];
+            int length;
+            while ((length = inputStream.read(buffer)) > 0) {
+                outputStream.write(buffer, 0, length);
+            }
+            outputStream.close();
+            inputStream.close();
+
+            // 执行解压命令
+            session.write("tar -zxf /sdcard/Download/ubuntu桌面初始备份.tar.gz -C /data/data/com.termux/files --recursive-unlink --preserve-permissions && exit\n");
+            prefs.edit().putBoolean("has_restored_initial_backup", true).apply();
+        } catch (IOException e) {
+            Logger.logStackTraceWithMessage(LOG_TAG, "还原初始备份失败", e);
+        }
     }
 
     @Override
@@ -775,9 +831,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                 // If permission is granted, then also setup storage symlinks.
                 if(PermissionUtils.checkAndRequestLegacyOrManageExternalStoragePermission(
                     TermuxActivity.this, requestCode, !isPermissionCallback)) {
-                    if (isPermissionCallback)
+                    if (isPermissionCallback) {
                         Logger.logInfoAndShowToast(TermuxActivity.this, LOG_TAG,
                             getString(com.termux.shared.R.string.msg_storage_permission_granted_on_request));
+                        tryRestoringBackup();
+                    }
 
                     TermuxInstaller.setupStorageSymlinks(TermuxActivity.this);
                 } else {
