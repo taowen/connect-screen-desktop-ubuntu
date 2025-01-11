@@ -38,13 +38,11 @@ import com.termux.shared.activity.media.AppCompatActivityUtils;
 import com.termux.shared.data.IntentUtils;
 import com.termux.shared.android.PermissionUtils;
 import com.termux.shared.data.DataUtils;
-import com.termux.shared.errors.Error;
 import com.termux.shared.termux.TermuxConstants;
 import com.termux.shared.termux.TermuxConstants.TERMUX_APP.TERMUX_ACTIVITY;
 import com.termux.app.activities.HelpActivity;
 import com.termux.app.activities.SettingsActivity;
 import com.termux.shared.termux.crash.TermuxCrashUtils;
-import com.termux.shared.termux.file.TermuxFileUtils;
 import com.termux.shared.termux.settings.preferences.TermuxAppSharedPreferences;
 import com.termux.app.terminal.TermuxSessionsListViewController;
 import com.termux.app.terminal.io.TerminalToolbarViewPager;
@@ -86,6 +84,7 @@ import java.util.Arrays;
  */
 public final class TermuxActivity extends AppCompatActivity implements ServiceConnection {
 
+    public static final String START_UBUNTU_DESKTOP = "sh /data/data/com.termux/files/usr/var/lib/proot-distro/installed-rootfs/ubuntu/start-desktop.sh";
     public static TermuxActivity instance;
     /**
      * The connection to the {@link TermuxService}. Requested in {@link #onCreate(Bundle)} with a call to
@@ -418,11 +417,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
                         
                         // 创建新会话并执行命令
                         mTermuxTerminalSessionActivityClient.addNewSession(launchFailsafe, null);
-                        
-                        // 获取并执行传入的命令
-                        if (toExecuteCommand != null && !toExecuteCommand.isEmpty()) {
-                            getCurrentSession().write(toExecuteCommand + "\n");
-                        }
+
                         
                         tryRestoringBackup();
                         
@@ -465,6 +460,10 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         // 检查是否已经恢复过初始备份
         SharedPreferences prefs = getSharedPreferences("connect_screen_ubuntu_desktop", MODE_PRIVATE);
         if (prefs.getBoolean("has_restored_initial_backup", false)) {
+            // 获取并执行传入的命令
+            if (toExecuteCommand != null && !toExecuteCommand.isEmpty()) {
+                getCurrentSession().write(toExecuteCommand + "\n");
+            }
             return;
         }
         try {
@@ -478,23 +477,28 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
             }
 
             // 从assets复制文件到Download目录
-            InputStream inputStream = getAssets().open("termux-backup");
-            File outputFile = new File("/sdcard/Download/termux备份.tar.gz");
-            FileOutputStream outputStream = new FileOutputStream(outputFile);
-            byte[] buffer = new byte[1024];
-            int length;
-            while ((length = inputStream.read(buffer)) > 0) {
-                outputStream.write(buffer, 0, length);
-            }
-            outputStream.close();
-            inputStream.close();
+            saveAssetAs("termux-backup", "/sdcard/Download/termux备份.tar.gz");
+            saveAssetAs("ubuntu", "/sdcard/Download/ubuntu桌面备份.tar.gz");
 
             // 执行解压命令
-            session.write("tar -zxf /sdcard/Download/termux备份.tar.gz -C /data/data/com.termux/files --recursive-unlink --preserve-permissions\n");
+            session.write("tar -zxf /sdcard/Download/termux备份.tar.gz -C /data/data/com.termux/files --recursive-unlink --preserve-permissions && cd ~ && proot-distro restore /sdcard/Download/ubuntu桌面备份.tar.gz && " + START_UBUNTU_DESKTOP + "\n");
             prefs.edit().putBoolean("has_restored_initial_backup", true).apply();
         } catch (IOException e) {
             Logger.logStackTraceWithMessage(LOG_TAG, "还原初始备份失败", e);
         }
+    }
+
+    private void saveAssetAs(String fromName, String toPath) throws IOException {
+        InputStream inputStream = getAssets().open(fromName);
+        File outputFile = new File(toPath);
+        FileOutputStream outputStream = new FileOutputStream(outputFile);
+        byte[] buffer = new byte[1024];
+        int length;
+        while ((length = inputStream.read(buffer)) > 0) {
+            outputStream.write(buffer, 0, length);
+        }
+        outputStream.close();
+        inputStream.close();
     }
 
     public void executeCommand(String command) {
